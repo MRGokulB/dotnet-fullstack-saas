@@ -1,7 +1,10 @@
-using DotnetFullstackSaaS.Application.Common.Interfaces;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using DotnetFullstackSaaS.Application.Common.CQRS;
 using DotnetFullstackSaaS.Application.Features.Products.Dtos;
+using DotnetFullstackSaaS.Application.Features.Products.Queries;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace DotnetFullstackSaaS.WebApi.Controllers;
 
@@ -9,20 +12,18 @@ namespace DotnetFullstackSaaS.WebApi.Controllers;
 [Route("api/[controller]")]
 public class ProductsController : ControllerBase
 {
-    private readonly IApplicationDbContext _dbContext;
+    private readonly IDispatcher _dispatcher;
 
-    public ProductsController(IApplicationDbContext dbContext)
+    public ProductsController(IDispatcher dispatcher)
     {
-        _dbContext = dbContext;
+        _dispatcher = dispatcher;
     }
 
     [HttpGet]
     public async Task<ActionResult<IEnumerable<ProductResponse>>> GetProducts(CancellationToken cancellationToken)
     {
-        var products = await _dbContext.Products
-            .AsNoTracking()
-            .ToListAsync(cancellationToken);
-
-        return Ok(products.Select(ProductResponse.FromEntity));
+        var response = await _dispatcher.QueryAsync<GetProductsQuery, IEnumerable<ProductResponse>>(
+            new GetProductsQuery(), cancellationToken);
+        return Ok(response);
     }
 }

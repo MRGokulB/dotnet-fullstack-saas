@@ -1,9 +1,12 @@
-using DotnetFullstackSaaS.Application.Common.Interfaces;
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using DotnetFullstackSaaS.Application.Common.CQRS;
+using DotnetFullstackSaaS.Application.Features.Orders.Commands;
 using DotnetFullstackSaaS.Application.Features.Orders.Dtos;
-using DotnetFullstackSaaS.Domain.Entities;
-using FluentValidation;
+using DotnetFullstackSaaS.Application.Features.Orders.Queries;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace DotnetFullstackSaaS.WebApi.Controllers;
 
@@ -11,42 +14,33 @@ namespace DotnetFullstackSaaS.WebApi.Controllers;
 [Route("api/[controller]")]
 public class OrdersController : ControllerBase
 {
-    private readonly IApplicationDbContext _dbContext;
-    private readonly IValidator<CreateOrderRequest> _validator;
+    private readonly IDispatcher _dispatcher;
 
-    public OrdersController(
-        IApplicationDbContext dbContext,
-        IValidator<CreateOrderRequest> validator)
+    public OrdersController(IDispatcher dispatcher)
     {
-        _dbContext = dbContext;
-        _validator = validator;
+        _dispatcher = dispatcher;
     }
 
     [HttpGet]
     public async Task<ActionResult<IEnumerable<OrderResponse>>> GetOrders(CancellationToken cancellationToken)
     {
-        var orders = await _dbContext.Orders
-            .AsNoTracking()
-            .OrderByDescending(o => o.CreatedAtUtc)
-            .Select(o => OrderResponse.FromEntity(o))
-            .ToListAsync(cancellationToken);
-
+        var orders = await _dispatcher.QueryAsync<GetOrdersQuery, IEnumerable<OrderResponse>>(
+            new GetOrdersQuery(), cancellationToken);
         return Ok(orders);
     }
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<OrderResponse>> GetOrderById(Guid id, CancellationToken cancellationToken)
     {
-        var order = await _dbContext.Orders
-            .AsNoTracking()
-            .FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
+        var order = await _dispatcher.QueryAsync<GetOrderByIdQuery, OrderResponse?>(
+            new GetOrderByIdQuery(id), cancellationToken);
 
         if (order == null)
         {
             return NotFound();
         }
 
-        return Ok(OrderResponse.FromEntity(order));
+        return Ok(order);
     }
 
     [HttpPost]
@@ -54,22 +48,13 @@ public class OrdersController : ControllerBase
         [FromBody] CreateOrderRequest request,
         CancellationToken cancellationToken)
     {
-        var validationResult = await _validator.ValidateAsync(request, cancellationToken);
-        if (!validationResult.IsValid)
-        {
-            throw new ValidationException(validationResult.Errors);
-        }
-
-        var order = Order.Create(
+        var command = new CreateOrderCommand(
             request.CustomerEmail,
             request.ProductName,
             request.TotalAmount,
             request.Currency);
 
-        _dbContext.Orders.Add(order);
-        await _dbContext.SaveChangesAsync(cancellationToken);
-
-        var response = OrderResponse.FromEntity(order);
-        return CreatedAtAction(nameof(GetOrderById), new { id = order.Id }, response);
+        var response = await _dispatcher.SendAsync<CreateOrderCommand, OrderResponse>(command, cancellationToken);
+        return CreatedAtAction(nameof(GetOrderById), new { id = response.Id }, response);
     }
 }

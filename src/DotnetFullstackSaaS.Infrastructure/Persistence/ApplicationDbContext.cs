@@ -19,6 +19,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
         modelBuilder.Entity<Order>(entity =>
         {
             entity.HasKey(o => o.Id);
+            entity.Ignore(o => o.DomainEvents);
             entity.Property(o => o.CustomerEmail).IsRequired().HasMaxLength(256);
             entity.Property(o => o.ProductName).IsRequired().HasMaxLength(200);
             entity.Property(o => o.TotalAmount).HasPrecision(18, 2);

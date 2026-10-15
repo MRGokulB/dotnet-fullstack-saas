@@ -1,8 +1,13 @@
+using System;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+using DotnetFullstackSaaS.Application.Common.CQRS;
 using DotnetFullstackSaaS.Application.Common.Interfaces;
+using DotnetFullstackSaaS.Application.Features.Payments.Commands;
 using DotnetFullstackSaaS.Application.Features.Payments.Dtos;
-using DotnetFullstackSaaS.Domain.Enums;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Stripe;
 
 namespace DotnetFullstackSaaS.WebApi.Controllers;
@@ -11,20 +16,17 @@ namespace DotnetFullstackSaaS.WebApi.Controllers;
 [Route("api/[controller]")]
 public class PaymentsController : ControllerBase
 {
-    private readonly IApplicationDbContext _dbContext;
+    private readonly IDispatcher _dispatcher;
     private readonly IPaymentService _paymentService;
-    private readonly IConfiguration _configuration;
     private readonly ILogger<PaymentsController> _logger;
 
     public PaymentsController(
-        IApplicationDbContext dbContext,
+        IDispatcher dispatcher,
         IPaymentService paymentService,
-        IConfiguration configuration,
         ILogger<PaymentsController> logger)
     {
-        _dbContext = dbContext;
+        _dispatcher = dispatcher;
         _paymentService = paymentService;
-        _configuration = configuration;
         _logger = logger;
     }
 
@@ -33,25 +35,10 @@ public class PaymentsController : ControllerBase
         Guid orderId,
         CancellationToken cancellationToken)
     {
-        var order = await _dbContext.Orders.FirstOrDefaultAsync(o => o.Id == orderId, cancellationToken);
-        if (order == null)
-        {
-            return NotFound(new { message = "Order not found" });
-        }
+        var response = await _dispatcher.SendAsync<CreateCheckoutSessionCommand, CheckoutResponse>(
+            new CreateCheckoutSessionCommand(orderId), cancellationToken);
 
-        var successUrl = _configuration["Stripe:SuccessUrl"] ?? "http://localhost:5173/success?order_id=" + order.Id;
-        var cancelUrl = _configuration["Stripe:CancelUrl"] ?? "http://localhost:5173/cancel?order_id=" + order.Id;
-
-        var (sessionId, checkoutUrl) = await _paymentService.CreateCheckoutSessionAsync(
-            order.Id,
-            order.ProductName,
-            order.TotalAmount,
-            order.Currency,
-            successUrl,
-            cancelUrl,
-            cancellationToken);
-
-        return Ok(new CheckoutResponse(order.Id, sessionId, checkoutUrl));
+        return Ok(response);
     }
 
     [HttpPost("webhook")]
@@ -78,28 +65,13 @@ public class PaymentsController : ControllerBase
     }
 
     [HttpPost("simulate-success/{orderId:guid}")]
-    public async Task<IActionResult> SimulateSuccess(Guid orderId, CancellationToken cancellationToken)
+    public async Task<ActionResult<SimulatePaymentSuccessResponse>> SimulateSuccess(
+        Guid orderId,
+        CancellationToken cancellationToken)
     {
-        var order = await _dbContext.Orders.FirstOrDefaultAsync(o => o.Id == orderId, cancellationToken);
-        if (order == null)
-        {
-            return NotFound(new { message = "Order not found" });
-        }
+        var response = await _dispatcher.SendAsync<SimulatePaymentSuccessCommand, SimulatePaymentSuccessResponse>(
+            new SimulatePaymentSuccessCommand(orderId), cancellationToken);
 
-        if (order.Status == OrderStatus.Paid)
-        {
-            return Ok(new { message = "Order is already paid", orderId = order.Id, status = "Paid" });
-        }
-
-        var mockPaymentIntent = "pi_simulated_" + Guid.NewGuid().ToString("N")[..16];
-        order.MarkAsPaid(mockPaymentIntent);
-        await _dbContext.SaveChangesAsync(cancellationToken);
-
-        return Ok(new {
-            message = "Simulated webhook event processed successfully",
-            orderId = order.Id,
-            status = "Paid",
-            paymentIntentId = mockPaymentIntent
-        });
+        return Ok(response);
     }
 }

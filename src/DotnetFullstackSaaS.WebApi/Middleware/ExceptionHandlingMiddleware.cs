@@ -1,7 +1,13 @@
+using System;
+using System.Linq;
 using System.Net;
 using System.Text.Json;
+using System.Threading.Tasks;
+using DotnetFullstackSaaS.Domain.Exceptions;
 using FluentValidation;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace DotnetFullstackSaaS.WebApi.Middleware;
 
@@ -27,6 +33,11 @@ public class ExceptionHandlingMiddleware
             _logger.LogWarning(ex, "Validation failure occurred");
             await HandleValidationExceptionAsync(context, ex);
         }
+        catch (DomainRuleViolationException ex)
+        {
+            _logger.LogWarning(ex, "Domain rule violation occurred");
+            await HandleDomainExceptionAsync(context, ex);
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unhandled exception occurred");
@@ -51,6 +62,22 @@ public class ExceptionHandlingMiddleware
             Status = (int)HttpStatusCode.BadRequest,
             Title = "Validation Error",
             Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.1"
+        };
+
+        return context.Response.WriteAsync(JsonSerializer.Serialize(problemDetails));
+    }
+
+    private static Task HandleDomainExceptionAsync(HttpContext context, DomainRuleViolationException exception)
+    {
+        context.Response.ContentType = "application/problem+json";
+        context.Response.StatusCode = (int)HttpStatusCode.UnprocessableEntity;
+
+        var problemDetails = new ProblemDetails
+        {
+            Status = (int)HttpStatusCode.UnprocessableEntity,
+            Title = "Unprocessable Entity",
+            Detail = exception.Message,
+            Type = "https://datatracker.ietf.org/doc/html/rfc4918#section-11.2"
         };
 
         return context.Response.WriteAsync(JsonSerializer.Serialize(problemDetails));

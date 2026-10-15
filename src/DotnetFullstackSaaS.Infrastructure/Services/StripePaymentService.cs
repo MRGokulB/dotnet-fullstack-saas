@@ -35,6 +35,14 @@ public class StripePaymentService : IPaymentService
     {
         var secretKey = _configuration["Stripe:SecretKey"] ?? string.Empty;
 
+        var effectiveSuccessUrl = !string.IsNullOrWhiteSpace(successUrl)
+            ? successUrl
+            : (_configuration["Stripe:SuccessUrl"] ?? "http://localhost:5173/success?order_id=" + orderId);
+
+        var effectiveCancelUrl = !string.IsNullOrWhiteSpace(cancelUrl)
+            ? cancelUrl
+            : (_configuration["Stripe:CancelUrl"] ?? "http://localhost:5173/cancel?order_id=" + orderId);
+
         if (string.IsNullOrWhiteSpace(secretKey) || secretKey.Contains("placeholder"))
         {
             var mockSessionId = "cs_sim_" + Guid.NewGuid().ToString("N")[..16];
@@ -45,7 +53,7 @@ public class StripePaymentService : IPaymentService
                 await _dbContext.SaveChangesAsync(cancellationToken);
             }
 
-            var simulatedRedirectUrl = successUrl.Replace("{CHECKOUT_SESSION_ID}", mockSessionId);
+            var simulatedRedirectUrl = effectiveSuccessUrl.Replace("{CHECKOUT_SESSION_ID}", mockSessionId);
             if (!simulatedRedirectUrl.Contains("order_id="))
             {
                 simulatedRedirectUrl += (simulatedRedirectUrl.Contains('?') ? "&" : "?") + "order_id=" + orderId;
@@ -76,8 +84,8 @@ public class StripePaymentService : IPaymentService
                     }
                 },
                 Mode = "payment",
-                SuccessUrl = successUrl,
-                CancelUrl = cancelUrl,
+                SuccessUrl = effectiveSuccessUrl,
+                CancelUrl = effectiveCancelUrl,
                 Metadata = new Dictionary<string, string>
                 {
                     { "OrderId", orderId.ToString() }
@@ -107,7 +115,7 @@ public class StripePaymentService : IPaymentService
                 await _dbContext.SaveChangesAsync(cancellationToken);
             }
 
-            var simulatedRedirectUrl = successUrl.Replace("{CHECKOUT_SESSION_ID}", mockSessionId);
+            var simulatedRedirectUrl = effectiveSuccessUrl.Replace("{CHECKOUT_SESSION_ID}", mockSessionId);
             if (!simulatedRedirectUrl.Contains("order_id="))
             {
                 simulatedRedirectUrl += (simulatedRedirectUrl.Contains('?') ? "&" : "?") + "order_id=" + orderId;
