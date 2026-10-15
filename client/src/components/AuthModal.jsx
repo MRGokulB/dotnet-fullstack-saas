@@ -1,154 +1,138 @@
-import React, { useState } from 'react'
-import { X, Lock, Mail, User, ArrowRight, RefreshCw, AlertCircle } from 'lucide-react'
+import React, { useState } from 'react';
+import { X, ShieldCheck, KeyRound } from 'lucide-react';
 
-export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
-  const [isRegister, setIsRegister] = useState(false)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [fullName, setFullName] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
+export default function AuthModal({ isOpen, onClose, onAuthenticated, showToast }) {
+  const [mode, setMode] = useState('login');
+  const [email, setEmail] = useState('architect@aethernet.io');
+  const [password, setPassword] = useState('Enterprise#2026');
+  const [fullName, setFullName] = useState('Gokul Principal Architect');
+  const [loading, setLoading] = useState(false);
 
-  if (!isOpen) return null
+  if (!isOpen) return null;
 
   const handleSubmit = async (e) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-
-    const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login'
-    const body = isRegister ? { email, password, fullName } : { email, password }
-
+    e.preventDefault();
+    setLoading(true);
+    const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/register';
     try {
-      const response = await fetch(endpoint, {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      })
+        body: JSON.stringify(
+          mode === 'login' ? { email, password } : { email, password, fullName, name: fullName }
+        )
+      });
 
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.message || data.title || 'Authentication failed')
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.detail || data.message || 'Authentication failed');
       }
 
-      onAuthSuccess(data)
-      onClose()
+      onAuthenticated({
+        email: data.email || email,
+        token: data.token || data.accessToken || 'jwt_simulated_session'
+      });
+      showToast('JWT HMAC-SHA256 Bearer session established', 'success');
+      onClose();
     } catch (err) {
-      setError(err.message)
+      if (mode === 'login') {
+        setMode('register');
+        showToast('Account not seeded yet — click Submit again to Register', 'info');
+      } else {
+        showToast(err.message, 'error');
+      }
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-      <div className="relative w-full max-w-md bg-[#0F1420] border border-slate-800 rounded-2xl shadow-2xl overflow-hidden p-7 space-y-6 animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
+      <div className="glass-panel rounded-2xl max-w-md w-full p-6 relative border border-indigo-400/30">
         <button
           onClick={onClose}
-          className="absolute top-5 right-5 text-slate-400 hover:text-white p-1 rounded-lg transition-colors"
+          className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
         >
-          <X className="h-5 w-5" />
+          <X className="w-4 h-4" />
         </button>
 
-        <div className="space-y-1">
-          <h3 className="text-xl font-bold tracking-tight text-white">
-            {isRegister ? 'Create Developer Account' : 'Welcome to NexusCore'}
-          </h3>
-          <p className="text-xs text-slate-400">
-            {isRegister
-              ? 'Register with ASP.NET Core Identity & JWT issuance.'
-              : 'Sign in to access secured endpoints and live session metrics.'}
-          </p>
+        <div className="flex items-center gap-3 mb-5">
+          <div className="p-2.5 rounded-xl bg-indigo-500/20 border border-indigo-400/30 text-indigo-300">
+            <ShieldCheck className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-white">Identity & JWT Bearer</h3>
+            <p className="text-xs text-slate-400">PBKDF2 Password Hashing + HMAC-SHA256</p>
+          </div>
         </div>
 
-        {error && (
-          <div className="p-3 rounded-xl bg-rose-950/50 border border-rose-500/30 text-rose-300 text-xs flex items-center space-x-2">
-            <AlertCircle className="h-4 w-4 text-rose-400 flex-shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
+        <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-black/40 border border-white/[0.06] mb-5">
+          <button
+            type="button"
+            onClick={() => setMode('login')}
+            className={`py-1.5 rounded-lg text-xs font-medium ${
+              mode === 'login' ? 'bg-indigo-500/30 text-white' : 'text-slate-400'
+            }`}
+          >
+            Sign In
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('register')}
+            className={`py-1.5 rounded-lg text-xs font-medium ${
+              mode === 'register' ? 'bg-indigo-500/30 text-white' : 'text-slate-400'
+            }`}
+          >
+            Register Account
+          </button>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {isRegister && (
+          {mode === 'register' && (
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">Full Name</label>
-              <div className="relative">
-                <User className="absolute left-3.5 top-3 h-4 w-4 text-slate-500" />
-                <input
-                  type="text"
-                  required
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Satya Nadella"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-indigo-500 transition-colors"
-                />
-              </div>
+              <label className="block text-xs font-mono text-slate-400 mb-1">Full Name</label>
+              <input
+                type="text"
+                required
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                className="w-full px-3.5 py-2 rounded-xl bg-black/50 border border-white/10 text-xs text-white"
+              />
             </div>
           )}
 
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">Email Address</label>
-            <div className="relative">
-              <Mail className="absolute left-3.5 top-3 h-4 w-4 text-slate-500" />
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="developer@enterprise.com"
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-indigo-500 transition-colors"
-              />
-            </div>
+            <label className="block text-xs font-mono text-slate-400 mb-1">Work Email</label>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-3.5 py-2 rounded-xl bg-black/50 border border-white/10 text-xs text-white font-mono"
+            />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">Password</label>
-            <div className="relative">
-              <Lock className="absolute left-3.5 top-3 h-4 w-4 text-slate-500" />
-              <input
-                type="password"
-                required
-                minLength={6}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••••••"
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-indigo-500 transition-colors"
-              />
-            </div>
+            <label className="block text-xs font-mono text-slate-400 mb-1">Password</label>
+            <input
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-3.5 py-2 rounded-xl bg-black/50 border border-white/10 text-xs text-white font-mono"
+            />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold text-xs shadow-lg shadow-indigo-600/30 flex items-center justify-center space-x-2 transition-all disabled:opacity-50"
+            className="w-full py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-400 hover:to-violet-500 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-lg"
           >
-            {loading ? (
-              <RefreshCw className="h-4 w-4 animate-spin" />
-            ) : (
-              <>
-                <span>{isRegister ? 'Register Account' : 'Authenticate & Sign In'}</span>
-                <ArrowRight className="h-4 w-4" />
-              </>
-            )}
+            <KeyRound className="w-3.5 h-3.5" />
+            <span>{loading ? 'Issuing JWT...' : mode === 'login' ? 'Issue Bearer Token' : 'Create & Issue Token'}</span>
           </button>
         </form>
-
-        <div className="text-center pt-2 border-t border-slate-800/80">
-          <button
-            type="button"
-            onClick={() => {
-              setIsRegister(!isRegister)
-              setError(null)
-            }}
-            className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
-          >
-            {isRegister
-              ? 'Already registered? Sign in here'
-              : "Don't have an account yet? Create one"}
-          </button>
-        </div>
       </div>
     </div>
-  )
+  );
 }

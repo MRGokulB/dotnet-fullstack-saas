@@ -1,175 +1,168 @@
-import React, { useState } from 'react'
+import React, { useState } from 'react';
 import {
   Layers,
-  ShieldCheck,
-  Server,
-  Database,
-  CreditCard,
-  ArrowRight,
-  CheckCircle2,
-  Workflow,
   Cpu,
-  Lock,
-  Globe
-} from 'lucide-react'
-
-const ARCH_STEPS = [
-  {
-    id: 1,
-    title: '1. Presentation / API Gateway',
-    layer: 'ASP.NET Core Web API (Kestrel)',
-    tech: 'Minimal APIs & Controllers, RFC 7807 Middleware',
-    description: 'Receives HTTPS requests, applies CORS policies, validates JWT Bearer tokens, and routes traffic through ASP.NET Core middleware pipeline.'
-  },
-  {
-    id: 2,
-    title: '2. Application / Business Logic',
-    layer: 'Application Layer',
-    tech: 'FluentValidation, DTOs, CQRS Interfaces',
-    description: 'Orchestrates business workflows, validates incoming request contracts, enforces business rules, and interacts strictly through abstractions (IApplicationDbContext, IPaymentService).'
-  },
-  {
-    id: 3,
-    title: '3. Domain / Enterprise Entities',
-    layer: 'Domain Layer (Zero Dependencies)',
-    tech: 'Rich Domain Models, State Transition Guards',
-    description: 'Encapsulates core business invariants (Order entity with private setters, OrderStatus state machine). Completely independent of databases or third-party SDKs.'
-  },
-  {
-    id: 4,
-    title: '4. Infrastructure & Persistence',
-    layer: 'Infrastructure Layer',
-    tech: 'EF Core 7/8, Npgsql, SqlServer, SQLite, Stripe.net',
-    description: 'Translates LINQ expressions to SQL queries via Entity Framework Core change tracker. Manages transactions, connection pooling, and external Stripe payment API interactions.'
-  },
-  {
-    id: 5,
-    title: '5. Cryptographic Webhook Ingestion',
-    layer: 'Stripe Webhook Pipeline',
-    tech: 'HMAC-SHA256 Signature Verification',
-    description: 'Receives asynchronous checkout.session.completed payloads, verifies the Stripe-Signature header cryptographically, guarantees idempotent order fulfillment, and saves state.'
-  }
-]
+  Database,
+  ShieldAlert,
+  ArrowRight,
+  Code2,
+  CheckCircle2
+} from 'lucide-react';
 
 export default function ArchitectureVisualizer() {
-  const [selectedStep, setSelectedStep] = useState(ARCH_STEPS[0])
+  const [selectedLayer, setSelectedLayer] = useState('application');
+
+  const layers = [
+    {
+      id: 'webapi',
+      title: 'WebApi Presentation Layer',
+      project: 'DotnetFullstackSaaS.WebApi',
+      badge: 'Port 5000 / Render Docker',
+      icon: ShieldAlert,
+      summary: 'Thin HTTP edge hosting RFC 7807 ExceptionHandlingMiddleware, JWT Bearer validation, and Kestrel telemetry.',
+      mernEquivalent: 'Express Router + Helmet + Zod Error Handler Middleware',
+      artifacts: [
+        'ExceptionHandlingMiddleware (HTTP 400 / 401 / 404 / 422 ProblemDetails)',
+        'PaymentsController & AnalyticsController dispatching via IDispatcher',
+        'HealthCheck endpoint reporting memory footprint and DB connectivity'
+      ]
+    },
+    {
+      id: 'application',
+      title: 'Application CQRS Layer',
+      project: 'DotnetFullstackSaaS.Application',
+      badge: 'Zero-Allocation Dispatcher',
+      icon: Cpu,
+      summary: 'Orchestrates use cases via ICommand<T>, IQuery<T>, and automatic FluentValidation pipelines.',
+      mernEquivalent: 'Use-Case Service Layer + Joi/Zod Schema Validators',
+      artifacts: [
+        'Dispatcher.SendAsync runs all IValidator<TCommand> prior to execution',
+        'GetAnalyticsSummaryQuery uses EF Core AsNoTracking() projections',
+        'CreateCheckoutSessionCommand & SimulatePaymentSuccessCommand'
+      ]
+    },
+    {
+      id: 'domain',
+      title: 'Rich Domain Core',
+      project: 'DotnetFullstackSaaS.Domain',
+      badge: 'Zero External Dependencies',
+      icon: Layers,
+      summary: 'Encapsulates enterprise invariants, state machine rules, and domain events inside aggregate roots.',
+      mernEquivalent: 'Pure TypeScript Domain Models + Node EventEmitter',
+      artifacts: [
+        'Order.MarkAsPaid() & Order.Refund() state machine guards',
+        'OrderStatusChangedDomainEvent queued in BaseEntity',
+        'DomainRuleViolationException mapped to HTTP 422 Unprocessable Entity'
+      ]
+    },
+    {
+      id: 'infrastructure',
+      title: 'Infrastructure & Cloud Adapters',
+      project: 'DotnetFullstackSaaS.Infrastructure',
+      badge: 'Neon Postgres + Stripe Dual-Mode',
+      icon: Database,
+      summary: 'Implements Application interfaces for persistence, PBKDF2 hashing, JWT HMAC-SHA256, and Stripe billing.',
+      mernEquivalent: 'Prisma/Mongoose Repositories + Stripe SDK + Passport JWT',
+      artifacts: [
+        'ApplicationDbContext supporting SQLite, Neon Postgres, and SQL Server',
+        'StripePaymentService with automatic live-to-simulation fallback',
+        'DbInitializer seeding 3 SaaS tiers and 4 realistic customer orders'
+      ]
+    }
+  ];
+
+  const active = layers.find((l) => l.id === selectedLayer) || layers[1];
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-200">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight text-white flex items-center space-x-2">
-          <Workflow className="h-6 w-6 text-indigo-400" />
-          <span>Clean Architecture & Execution Flow</span>
-        </h2>
-        <p className="text-xs text-slate-400 mt-1">
-          Decoupled 4-layer enterprise architecture following Twelve-Factor cloud standards and Domain-Driven Design (DDD).
-        </p>
+    <section className="glass-panel rounded-2xl p-6 space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-white">
+            Clean Architecture (DIP) & CQRS Pipeline Inspector
+          </h2>
+          <p className="text-xs text-slate-400">
+            Click any architectural ring to inspect its .NET 7 implementation and MERN/GCP enterprise mapping
+          </p>
+        </div>
+        <span className="px-3 py-1 rounded-full bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 text-xs font-mono">
+          Dependency Rule: Inward Only
+        </span>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-        {ARCH_STEPS.map((step) => {
-          const isSelected = selectedStep.id === step.id
-          return (
-            <div
-              key={step.id}
-              onClick={() => setSelectedStep(step)}
-              className={`p-4 rounded-xl cursor-pointer border transition-all text-left ${
-                isSelected
-                  ? 'bg-gradient-to-b from-indigo-950/50 to-slate-900 border-indigo-500 shadow-xl shadow-indigo-950/40 scale-[1.02]'
-                  : 'bg-[#0E131F]/80 border-slate-800/80 hover:border-slate-700 hover:bg-slate-900/60'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-mono text-indigo-400 font-bold uppercase">
-                  Step 0{step.id}
-                </span>
-                {isSelected && <span className="h-2 w-2 rounded-full bg-indigo-400 animate-pulse" />}
-              </div>
-              <h4 className="text-xs font-bold text-white leading-tight mb-1">{step.title}</h4>
-              <p className="text-[11px] text-slate-400 font-mono truncate">{step.layer}</p>
-            </div>
-          )
-        })}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        <div className="lg:col-span-7 bg-[#0E131F]/90 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-5">
-          <div className="flex items-center space-x-3 border-b border-slate-800/80 pb-4">
-            <div className="p-2.5 rounded-xl bg-indigo-600/20 border border-indigo-500/30 text-indigo-300">
-              <Cpu className="h-5 w-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-white">{selectedStep.title}</h3>
-              <p className="text-xs text-indigo-400 font-mono">{selectedStep.layer}</p>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <div className="text-xs font-semibold text-slate-300 uppercase tracking-wider font-mono">
-              Key Technologies & Patterns
-            </div>
-            <div className="px-3.5 py-2 rounded-xl bg-slate-900/90 border border-slate-800 font-mono text-xs text-emerald-300">
-              {selectedStep.tech}
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <div className="text-xs font-semibold text-slate-300 uppercase tracking-wider font-mono">
-              Architectural Role & Guarantees
-            </div>
-            <p className="text-xs text-slate-300 leading-relaxed bg-slate-900/50 p-4 rounded-xl border border-slate-800/80">
-              {selectedStep.description}
-            </p>
-          </div>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+        <div className="lg:col-span-5 flex flex-col justify-between space-y-3">
+          {layers.map((layer, index) => {
+            const Icon = layer.icon;
+            const isSelected = layer.id === selectedLayer;
+            return (
+              <button
+                key={layer.id}
+                onClick={() => setSelectedLayer(layer.id)}
+                className={`w-full text-left p-4 rounded-xl border transition-all duration-200 flex items-center justify-between ${
+                  isSelected
+                    ? 'bg-gradient-to-r from-indigo-500/25 via-violet-500/15 to-transparent border-indigo-400/50 shadow-[0_0_30px_rgba(99,102,241,0.2)]'
+                    : 'bg-white/[0.02] border-white/[0.07] hover:bg-white/[0.04]'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`p-2.5 rounded-xl ${isSelected ? 'bg-indigo-500 text-white' : 'bg-white/[0.05] text-slate-400'}`}>
+                    <Icon className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-mono text-indigo-300">Layer 0{index + 1}</div>
+                    <div className="text-sm font-semibold text-white">{layer.title}</div>
+                  </div>
+                </div>
+                <ArrowRight className={`w-4 h-4 transition-transform ${isSelected ? 'text-indigo-300 translate-x-1' : 'text-slate-600'}`} />
+              </button>
+            );
+          })}
         </div>
 
-        <div className="lg:col-span-5 bg-[#0E131F]/90 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-4">
-          <h3 className="text-sm font-bold text-white flex items-center space-x-2">
-            <ShieldCheck className="h-4 w-4 text-indigo-400" />
-            <span>Clean Architecture Dependency Inversion</span>
-          </h3>
-
-          <div className="space-y-3 text-xs">
-            <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between">
+        <div className="lg:col-span-7 rounded-2xl bg-black/40 border border-white/[0.08] p-6 flex flex-col justify-between space-y-6">
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-white/[0.08]">
               <div>
-                <div className="font-bold text-white">Domain</div>
-                <div className="text-[11px] text-slate-400">Zero dependencies on any layer or library</div>
+                <span className="text-xs font-mono text-indigo-400">{active.project}</span>
+                <h3 className="text-xl font-bold text-white mt-0.5">{active.title}</h3>
               </div>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                Core
+              <span className="px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-mono">
+                {active.badge}
               </span>
             </div>
 
-            <div className="flex justify-center">
-              <ArrowRight className="h-4 w-4 text-slate-600 rotate-90" />
-            </div>
+            <p className="text-sm text-slate-300 leading-relaxed">{active.summary}</p>
 
-            <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between">
-              <div>
-                <div className="font-bold text-white">Application</div>
-                <div className="text-[11px] text-slate-400">Depends ONLY on Domain (CQRS, Interfaces)</div>
+            <div className="p-3.5 rounded-xl bg-indigo-500/[0.07] border border-indigo-500/20">
+              <div className="text-[11px] font-mono uppercase tracking-wider text-indigo-300 mb-1 flex items-center gap-1.5">
+                <Code2 className="w-3.5 h-3.5" />
+                <span>MERN / GCP Architectural Equivalent</span>
               </div>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                Use Cases
-              </span>
+              <div className="text-xs font-mono text-slate-200">{active.mernEquivalent}</div>
             </div>
 
-            <div className="flex justify-center">
-              <ArrowRight className="h-4 w-4 text-slate-600 rotate-90" />
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between">
-              <div>
-                <div className="font-bold text-white">Infrastructure & WebApi</div>
-                <div className="text-[11px] text-slate-400">Implements interfaces defined in Application</div>
+            <div className="space-y-2 pt-2">
+              <div className="text-xs font-mono uppercase tracking-wider text-slate-400">
+                Production C# Artifacts in Repository
               </div>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20">
-                Adapters
-              </span>
+              {active.artifacts.map((item) => (
+                <div
+                  key={item}
+                  className="flex items-center gap-2.5 p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.05] text-xs text-slate-200 font-mono"
+                >
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{item}</span>
+                </div>
+              ))}
             </div>
+          </div>
+
+          <div className="pt-4 border-t border-white/[0.06] flex items-center justify-between text-[11px] font-mono text-slate-400">
+            <span>Build Policy: 0 Warnings / 0 Comments</span>
+            <span className="text-emerald-400">Verified on .NET 7</span>
           </div>
         </div>
       </div>
-    </div>
-  )
+    </section>
+  );
 }

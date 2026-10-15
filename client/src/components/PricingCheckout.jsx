@@ -1,347 +1,223 @@
-import React, { useState } from 'react'
+import React, { useState } from 'react';
 import {
-  CreditCard,
-  CheckCircle2,
+  Check,
   Zap,
+  Shield,
+  Crown,
   ArrowRight,
-  RefreshCw,
-  Sparkles,
-  ShieldAlert,
-  Terminal
-} from 'lucide-react'
+  Lock,
+  Sparkles
+} from 'lucide-react';
 
 export default function PricingCheckout({
   products,
-  onOrderCreated,
-  addToast,
-  currentUser
+  orders,
+  onInitiateCheckout,
+  onSimulateSuccess,
+  busyOrderId
 }) {
-  const [billingInterval, setBillingInterval] = useState('monthly')
-  const [selectedProduct, setSelectedProduct] = useState(products[1] || products[0])
-  const [email, setEmail] = useState(currentUser?.email || '')
-  const [loading, setLoading] = useState(false)
-  const [lastCreatedOrder, setLastCreatedOrder] = useState(null)
-  const [simulating, setSimulating] = useState(false)
+  const [selectedBilling, setSelectedBilling] = useState('monthly');
 
-  const activePrice = (product) => {
-    if (!product) return 0
-    return billingInterval === 'monthly' ? product.monthlyPrice : product.annualPrice
-  }
-
-  const handleCheckout = async (e) => {
-    e.preventDefault()
-    if (!email) {
-      addToast('error', 'Validation Error', 'Please specify an email address for checkout.')
-      return
+  const defaultProducts = [
+    {
+      id: 1,
+      name: 'Starter Cloud',
+      tier: 'starter',
+      price: 99,
+      description: 'Clean Architecture foundation for emerging engineering teams.',
+      features: [
+        'Up to 5 microservices on Render',
+        'Neon Serverless Postgres connection pool',
+        'RFC 7807 standardized ProblemDetails',
+        'PBKDF2 + JWT Bearer security'
+      ]
+    },
+    {
+      id: 2,
+      name: 'Pro Scale CQRS',
+      tier: 'pro',
+      price: 499,
+      isPopular: true,
+      description: 'Full CQRS dispatcher, FluentValidation pipeline, and dual-mode Stripe.',
+      features: [
+        'Zero-allocation CQRS Read/Write split',
+        'Domain Events & Rich Entity invariants',
+        'Dual-Mode Stripe Checkout & Webhooks',
+        'Real-time 7-day telemetry projections'
+      ]
+    },
+    {
+      id: 3,
+      name: 'Enterprise Principal',
+      tier: 'enterprise',
+      price: 2499,
+      description: 'Dedicated multi-region orchestration with custom SLA guarantees.',
+      features: [
+        'Multi-provider EF Core (Postgres / SQL Server)',
+        'Dedicated Principal Architect support',
+        'Custom RBAC & audit event streaming',
+        '99.99% uptime telemetry SLA'
+      ]
     }
+  ];
 
-    setLoading(true)
+  const catalog = products && products.length > 0 ? products : defaultProducts;
 
-    try {
-      const orderPayload = {
-        customerEmail: email,
-        productName: `${selectedProduct.name} (${billingInterval})`,
-        totalAmount: activePrice(selectedProduct),
-        currency: 'usd'
-      }
+  const getTierIcon = (tierName = '') => {
+    const normalized = tierName.toLowerCase();
+    if (normalized.includes('enterprise')) return Crown;
+    if (normalized.includes('pro')) return Zap;
+    return Shield;
+  };
 
-      const createOrderRes = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(orderPayload)
-      })
-
-      if (!createOrderRes.ok) {
-        const errorJson = await createOrderRes.json()
-        throw new Error(errorJson.title || 'Could not create order entity')
-      }
-
-      const orderData = await createOrderRes.json()
-      setLastCreatedOrder(orderData)
-      onOrderCreated()
-
-      const checkoutRes = await fetch(`/api/payments/checkout/${orderData.id}`, {
-        method: 'POST'
-      })
-
-      if (!checkoutRes.ok) {
-        throw new Error('Failed to create Stripe Checkout session')
-      }
-
-      const checkoutData = await checkoutRes.json()
-
-      addToast('success', 'Order Initialized', `Order ${orderData.id.substring(0, 8)}... created in EF Core`)
-
-      if (checkoutData.checkoutUrl) {
-        window.location.href = checkoutData.checkoutUrl
-      }
-    } catch (err) {
-      addToast('error', 'Checkout Exception', err.message || 'Payment initiation failed')
-    } finally {
-      setLoading(false)
+  const getFeatureList = (product) => {
+    if (Array.isArray(product.features) && product.features.length > 0) {
+      return product.features;
     }
-  }
-
-  const handleSimulateWebhook = async (orderId) => {
-    setSimulating(true)
-    try {
-      const res = await fetch(`/api/payments/simulate-success/${orderId}`, {
-        method: 'POST'
-      })
-      const data = await res.json()
-      if (res.ok) {
-        addToast('success', 'State Transitioned', `Order marked as PAID via simulated webhook event!`)
-        onOrderCreated()
-        setLastCreatedOrder(prev => prev ? { ...prev, status: 'Paid' } : null)
-      } else {
-        throw new Error(data.message || 'Simulation failed')
-      }
-    } catch (err) {
-      addToast('error', 'Simulation Error', err.message)
-    } finally {
-      setSimulating(false)
+    if (typeof product.features === 'string' && product.features.trim().length > 0) {
+      return product.features.split(',').map((s) => s.trim());
     }
-  }
+    const fallback = defaultProducts.find(
+      (d) => d.id === product.id || d.name.toLowerCase() === (product.name || '').toLowerCase()
+    );
+    return fallback ? fallback.features : defaultProducts[1].features;
+  };
+
+  const pendingOrder = orders?.find((o) => String(o.status).toLowerCase() === 'pending') || orders?.[0];
 
   return (
-    <div className="space-y-12">
-      <div className="text-center space-y-4 max-w-3xl mx-auto pt-4">
-        <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-medium">
-          <Zap className="h-3.5 w-3.5" />
-          <span>Production-Ready ASP.NET Core & Stripe Infrastructure</span>
-        </div>
-        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight bg-gradient-to-b from-white via-slate-100 to-slate-400 bg-clip-text text-transparent leading-tight">
-          Cloud-Native Enterprise Subscriptions
-        </h1>
-        <p className="text-slate-400 text-sm md:text-base leading-relaxed max-w-2xl mx-auto">
-          Built according to Twelve-Factor SaaS principles: compiled C# type safety, Entity Framework Core query tracking, and cryptographically verified Stripe checkout pipelines.
-        </p>
-
-        <div className="pt-2 flex items-center justify-center space-x-3">
-          <div className="bg-slate-900/90 border border-slate-800 p-1 rounded-xl inline-flex items-center">
-            <button
-              onClick={() => setBillingInterval('monthly')}
-              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                billingInterval === 'monthly'
-                  ? 'bg-indigo-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Monthly Billing
-            </button>
-            <button
-              onClick={() => setBillingInterval('annual')}
-              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 ${
-                billingInterval === 'annual'
-                  ? 'bg-indigo-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <span>Annual Billing</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold">
-                Save 20%
-              </span>
-            </button>
+    <section className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-300 text-[11px] font-mono uppercase tracking-wider mb-2">
+            <Sparkles className="w-3 h-3" />
+            <span>Dual-Mode Stripe Payment Service</span>
           </div>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-gradient-metallic">
+            Subscription Tiers & Live Checkout Dispatch
+          </h2>
+        </div>
+
+        <div className="inline-flex items-center p-1 rounded-xl glass-panel self-start">
+          <button
+            onClick={() => setSelectedBilling('monthly')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              selectedBilling === 'monthly'
+                ? 'bg-indigo-500/25 text-white border border-indigo-400/30'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Monthly Billing
+          </button>
+          <button
+            onClick={() => setSelectedBilling('annual')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+              selectedBilling === 'annual'
+                ? 'bg-indigo-500/25 text-white border border-indigo-400/30'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <span>Annual</span>
+            <span className="text-[10px] font-mono text-emerald-300 bg-emerald-500/15 px-1.5 py-0.5 rounded">
+              -15%
+            </span>
+          </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
-        {products.map((product) => {
-          const isSelected = selectedProduct?.id === product.id
-          const price = activePrice(product)
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {catalog.map((product, idx) => {
+          const Icon = getTierIcon(product.tier || product.name);
+          const isFeatured = product.isPopular || idx === 1;
+          const basePrice = Number(product.price || product.monthlyPrice || 99);
+          const displayPrice =
+            selectedBilling === 'annual' ? Math.round(basePrice * 0.85) : basePrice;
+          const features = getFeatureList(product);
+          const matchingOrder =
+            orders?.find((o) => o.productId === product.id && String(o.status).toLowerCase() === 'pending') ||
+            pendingOrder ||
+            { id: idx + 1 };
 
           return (
             <div
-              key={product.id}
-              onClick={() => setSelectedProduct(product)}
-              className={`cursor-pointer rounded-2xl p-6 transition-all duration-200 border relative flex flex-col justify-between ${
-                isSelected
-                  ? 'bg-gradient-to-b from-indigo-950/40 via-slate-900 to-slate-900 border-indigo-500/70 shadow-2xl shadow-indigo-950/60 scale-[1.02]'
-                  : 'bg-[#0E131F]/60 border-slate-800/80 hover:border-slate-700 hover:bg-[#121827]/60'
+              key={product.id || product.name}
+              className={`rounded-2xl p-6 flex flex-col justify-between relative transition-all duration-300 ${
+                isFeatured
+                  ? 'bg-gradient-to-b from-indigo-500/[0.12] via-white/[0.03] to-white/[0.02] backdrop-blur-2xl border border-indigo-400/40 shadow-[0_25px_80px_-15px_rgba(99,102,241,0.3)]'
+                  : 'glass-panel glass-panel-hover'
               }`}
             >
-              {product.isPopular && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 text-[10px] font-bold uppercase tracking-wider text-white shadow-lg shadow-indigo-500/30">
-                  Recommended Tier
+              {isFeatured && (
+                <div className="absolute -top-3 right-6 px-3 py-1 rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 text-[10px] font-mono uppercase tracking-widest text-white shadow-lg">
+                  Most Deployed
                 </div>
               )}
 
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-mono text-indigo-400 uppercase tracking-wider">
-                    {product.badge || 'Standard Tier'}
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="p-2.5 rounded-xl bg-white/[0.05] border border-white/[0.1] text-indigo-300">
+                    <Icon className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-mono uppercase tracking-wider text-slate-400">
+                    Tier 0{idx + 1}
                   </span>
-                  {isSelected && (
-                    <span className="h-2 w-2 rounded-full bg-indigo-400 animate-ping" />
-                  )}
                 </div>
 
-                <div>
-                  <h3 className="text-lg font-bold text-white">{product.name}</h3>
-                  <p className="text-xs text-slate-400 mt-1 line-clamp-2 leading-relaxed">
-                    {product.description}
-                  </p>
+                <h3 className="text-xl font-bold text-white mb-1">{product.name}</h3>
+                <p className="text-xs text-slate-400 leading-relaxed min-h-[36px]">
+                  {product.description || 'Enterprise SaaS subscription plan powered by .NET Clean Architecture.'}
+                </p>
+
+                <div className="my-6 pb-6 border-b border-white/[0.08] flex items-baseline gap-2">
+                  <span className="text-4xl font-bold font-mono text-white">
+                    ${displayPrice.toLocaleString()}
+                  </span>
+                  <span className="text-xs font-mono text-slate-400">/ month</span>
                 </div>
 
-                <div className="flex items-baseline space-x-1 pt-2 border-t border-slate-800/80">
-                  <span className="text-3xl font-extrabold text-white">${price}</span>
-                  <span className="text-xs text-slate-400">/{billingInterval === 'monthly' ? 'mo' : 'yr'}</span>
-                </div>
-
-                <ul className="space-y-2.5 text-xs text-slate-300 pt-2 border-t border-slate-800/60">
-                  {product.features?.map((feat, idx) => (
-                    <li key={idx} className="flex items-center space-x-2">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-indigo-400 flex-shrink-0" />
-                      <span>{feat}</span>
+                <ul className="space-y-3 mb-8">
+                  {features.map((feature) => (
+                    <li key={feature} className="flex items-start gap-2.5 text-xs text-slate-300">
+                      <span className="mt-0.5 p-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        <Check className="w-3 h-3" />
+                      </span>
+                      <span>{feature}</span>
                     </li>
                   ))}
                 </ul>
               </div>
 
-              <div className="pt-6">
+              <div className="space-y-2.5 pt-2">
                 <button
-                  type="button"
-                  className={`w-full py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                    isSelected
-                      ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                  onClick={() => onInitiateCheckout(matchingOrder.id, product)}
+                  disabled={busyOrderId === matchingOrder.id}
+                  className={`w-full py-2.5 px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+                    isFeatured
+                      ? 'bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-400 hover:to-violet-500 text-white shadow-[0_0_25px_rgba(99,102,241,0.4)]'
+                      : 'bg-white/[0.07] hover:bg-white/[0.12] text-white border border-white/[0.12]'
                   }`}
                 >
-                  {isSelected ? 'Selected Plan' : 'Choose Plan'}
+                  <span>
+                    {busyOrderId === matchingOrder.id
+                      ? 'Dispatching CreateCheckoutSessionCommand...'
+                      : `Checkout via Stripe (Order #${matchingOrder.id})`}
+                  </span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+
+                <button
+                  onClick={() => onSimulateSuccess(matchingOrder.id)}
+                  disabled={busyOrderId === matchingOrder.id}
+                  className="w-full py-2 px-3 rounded-xl text-[11px] font-mono text-emerald-300 bg-emerald-500/[0.08] hover:bg-emerald-500/[0.15] border border-emerald-500/25 transition-all flex items-center justify-center gap-1.5"
+                >
+                  <Lock className="w-3 h-3" />
+                  <span>Simulate Webhook Settlement (#{matchingOrder.id})</span>
                 </button>
               </div>
             </div>
-          )
+          );
         })}
       </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        <div className="lg:col-span-7 bg-[#0E131F]/90 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-5">
-          <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
-            <div className="flex items-center space-x-3">
-              <div className="h-8 w-8 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center">
-                <CreditCard className="h-4 w-4 text-indigo-400" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-white">Direct Checkout Dispatcher</h3>
-                <p className="text-xs text-slate-400">Initiates ASP.NET Core `/api/orders` & Stripe Checkout Session</p>
-              </div>
-            </div>
-            <span className="text-xs font-mono text-emerald-400 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-              Live Mock & Stripe Mode
-            </span>
-          </div>
-
-          <form onSubmit={handleCheckout} className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                Customer Email Address
-              </label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="developer@enterprise.com"
-                className="w-full px-4 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700/80 text-white placeholder-slate-500 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
-              />
-            </div>
-
-            <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 space-y-2 text-xs">
-              <div className="flex justify-between text-slate-400">
-                <span>Selected Plan:</span>
-                <span className="text-white font-medium">{selectedProduct?.name}</span>
-              </div>
-              <div className="flex justify-between text-slate-400">
-                <span>Billing Interval:</span>
-                <span className="capitalize text-white font-medium">{billingInterval}</span>
-              </div>
-              <div className="flex justify-between text-slate-400 pt-2 border-t border-slate-800">
-                <span className="font-semibold text-white">Total Immediate Amount:</span>
-                <span className="text-base font-bold text-indigo-400 font-mono">
-                  ${activePrice(selectedProduct)}.00 USD
-                </span>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-xs font-bold shadow-xl shadow-indigo-600/25 flex items-center justify-center space-x-2 transition-all disabled:opacity-50"
-            >
-              {loading ? (
-                <>
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                  <span>Processing Entity Creation in EF Core...</span>
-                </>
-              ) : (
-                <>
-                  <span>Proceed to Stripe Checkout Session</span>
-                  <ArrowRight className="h-4 w-4" />
-                </>
-              )}
-            </button>
-          </form>
-        </div>
-
-        <div className="lg:col-span-5 bg-[#0E131F]/90 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-4">
-          <div className="flex items-center space-x-2 text-white">
-            <Terminal className="h-4 w-4 text-indigo-400" />
-            <h3 className="text-sm font-bold">Instant Webhook Simulator</h3>
-          </div>
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Test the complete end-to-end webhook event handling loop instantly without running a Stripe CLI tunnel or using a test credit card.
-          </p>
-
-          {lastCreatedOrder ? (
-            <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-3">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-400">Pending Order:</span>
-                <span className="font-mono text-[10px] text-indigo-300">{lastCreatedOrder.id}</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-400">Status:</span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase ${
-                  lastCreatedOrder.status === 'Paid'
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                    : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                }`}>
-                  {lastCreatedOrder.status}
-                </span>
-              </div>
-
-              {lastCreatedOrder.status !== 'Paid' ? (
-                <button
-                  type="button"
-                  disabled={simulating}
-                  onClick={() => handleSimulateWebhook(lastCreatedOrder.id)}
-                  className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
-                >
-                  {simulating ? (
-                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Sparkles className="h-3.5 w-3.5" />
-                  )}
-                  <span>Simulate Stripe Webhook Succeeded Event</span>
-                </button>
-              ) : (
-                <div className="text-center py-1 text-xs text-emerald-400 font-medium">
-                  Order successfully confirmed as Paid in database!
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="p-6 rounded-xl bg-slate-900/50 border border-dashed border-slate-800 text-center space-y-2">
-              <ShieldAlert className="h-6 w-6 text-slate-500 mx-auto" />
-              <p className="text-xs text-slate-400">No recent order created in this session.</p>
-              <p className="text-[11px] text-slate-500">
-                Click "Proceed to Stripe Checkout" above to generate a live order, and this panel will enable the 1-click webhook simulation.
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
+    </section>
+  );
 }

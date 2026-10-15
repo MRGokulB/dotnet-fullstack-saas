@@ -1,207 +1,179 @@
-import React, { useState, useEffect, useCallback } from 'react'
-import Navbar from './components/Navbar'
-import PricingCheckout from './components/PricingCheckout'
-import AnalyticsDashboard from './components/AnalyticsDashboard'
-import OrdersLedger from './components/OrdersLedger'
-import ArchitectureVisualizer from './components/ArchitectureVisualizer'
-import ApiExplorer from './components/ApiExplorer'
-import AuthModal from './components/AuthModal'
-import Toast from './components/Toast'
-
-const DEFAULT_PRODUCTS = [
-  {
-    id: 'starter',
-    name: 'Developer Starter',
-    description: 'Lightweight single-instance infrastructure for microservices, prototypes, and testing.',
-    monthlyPrice: 29,
-    annualPrice: 290,
-    features: ['Single-tenant instance', 'SQLite / Postgres support', 'Up to 10k requests/mo', 'Community Support'],
-    isPopular: false,
-    badge: 'Fast Track'
-  },
-  {
-    id: 'pro',
-    name: 'Cloud Scale Pro',
-    description: 'High-throughput enterprise pipeline with automated CI/CD and managed cloud database.',
-    monthlyPrice: 99,
-    annualPrice: 990,
-    features: ['High-throughput Kestrel API', 'Azure SQL / Neon Postgres', 'Automated CI/CD Pipeline', 'Stripe Webhooks & Idempotency'],
-    isPopular: true,
-    badge: 'Most Popular'
-  },
-  {
-    id: 'enterprise',
-    name: 'Enterprise Agentic',
-    description: 'Full 4-layer Clean Architecture with distributed tracing, zero-downtime scaling, and 24/7 SLA.',
-    monthlyPrice: 299,
-    annualPrice: 2990,
-    features: ['Clean Architecture 4-Layer', 'Azure Container Apps / ECS', 'Full Observability & Metrics', '24/7 Dedicated Support'],
-    isPopular: false,
-    badge: 'Enterprise'
-  }
-]
+import React, { useState, useEffect, useCallback } from 'react';
+import Navbar from './components/Navbar';
+import AnalyticsDashboard from './components/AnalyticsDashboard';
+import PricingCheckout from './components/PricingCheckout';
+import OrdersLedger from './components/OrdersLedger';
+import ArchitectureVisualizer from './components/ArchitectureVisualizer';
+import ApiExplorer from './components/ApiExplorer';
+import AuthModal from './components/AuthModal';
+import Toast from './components/Toast';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('checkout')
-  const [products, setProducts] = useState(DEFAULT_PRODUCTS)
-  const [orders, setOrders] = useState([])
-  const [ordersLoading, setOrdersLoading] = useState(false)
-  const [health, setHealth] = useState(null)
-  const [currentUser, setCurrentUser] = useState(null)
-  const [authModalOpen, setAuthModalOpen] = useState(false)
-  const [toasts, setToasts] = useState([])
+  const [activeTab, setActiveTab] = useState('overview');
+  const [products, setProducts] = useState([]);
+  const [summary, setSummary] = useState(null);
+  const [orders, setOrders] = useState([]);
+  const [health, setHealth] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [busyOrderId, setBusyOrderId] = useState(null);
+  const [user, setUser] = useState(null);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [toast, setToast] = useState(null);
 
-  const addToast = useCallback((type, title, message) => {
-    const id = Date.now() + Math.random().toString(36).substring(2, 6)
-    setToasts((prev) => [...prev, { id, type, title, message }])
+  const showToast = useCallback((message, type = 'success') => {
+    setToast({ message, type });
     setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id))
-    }, 4500)
-  }, [])
+      setToast((current) => (current?.message === message ? null : current));
+    }, 4500);
+  }, []);
 
-  const removeToast = useCallback((id) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id))
-  }, [])
-
-  const fetchHealth = useCallback(async () => {
+  const loadPlatformState = useCallback(async () => {
+    setIsLoading(true);
     try {
-      const res = await fetch('/health')
-      if (res.ok) {
-        const json = await res.json()
-        setHealth(json)
-      } else {
-        setHealth({ status: 'Degraded' })
+      const [prodRes, sumRes, ordRes, healthRes] = await Promise.allSettled([
+        fetch('/api/products'),
+        fetch('/api/analytics/summary'),
+        fetch('/api/orders'),
+        fetch('/health')
+      ]);
+
+      if (prodRes.status === 'fulfilled' && prodRes.value.ok) {
+        setProducts(await prodRes.value.json());
+      }
+      if (sumRes.status === 'fulfilled' && sumRes.value.ok) {
+        setSummary(await sumRes.value.json());
+      }
+      if (ordRes.status === 'fulfilled' && ordRes.value.ok) {
+        setOrders(await ordRes.value.json());
+      }
+      if (healthRes.status === 'fulfilled' && healthRes.value.ok) {
+        setHealth(await healthRes.value.json());
       }
     } catch {
-      setHealth({ status: 'Offline' })
-    }
-  }, [])
-
-  const fetchProducts = useCallback(async () => {
-    try {
-      const res = await fetch('/api/products')
-      if (res.ok) {
-        const json = await res.json()
-        if (Array.isArray(json) && json.length > 0) {
-          setProducts(json)
-        }
-      }
-    } catch {
-    }
-  }, [])
-
-  const fetchOrders = useCallback(async () => {
-    setOrdersLoading(true)
-    try {
-      const res = await fetch('/api/orders')
-      if (res.ok) {
-        const json = await res.json()
-        setOrders(json)
-      }
-    } catch {
+      showToast('Running with local resilient telemetry snapshot', 'info');
     } finally {
-      setOrdersLoading(false)
+      setIsLoading(false);
     }
-  }, [])
+  }, [showToast]);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('nexuscore_user')
-    if (savedUser) {
-      try {
-        setCurrentUser(JSON.parse(savedUser))
-      } catch {
-        localStorage.removeItem('nexuscore_user')
+    loadPlatformState();
+  }, [loadPlatformState]);
+
+  const handleInitiateCheckout = async (orderId) => {
+    setBusyOrderId(orderId);
+    try {
+      const res = await fetch(`/api/payments/checkout/${orderId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          successUrl: window.location.origin,
+          cancelUrl: window.location.origin
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.detail || 'Could not initiate checkout session');
       }
+      showToast(
+        `Stripe Session ${data.sessionId || 'Created'} (${data.isSimulated ? 'Simulated Mode' : 'Live Mode'})`,
+        'info'
+      );
+      await loadPlatformState();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setBusyOrderId(null);
     }
+  };
 
-    fetchHealth()
-    fetchProducts()
-    fetchOrders()
-
-    const params = new URLSearchParams(window.location.search)
-    const orderId = params.get('order_id')
-    if (orderId) {
-      addToast('success', 'Checkout Successful', `Completed session verification for: ${orderId.substring(0, 16)}...`)
+  const handleSimulateSuccess = async (orderId) => {
+    setBusyOrderId(orderId);
+    try {
+      const res = await fetch(`/api/payments/simulate-success/${orderId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.detail || 'Order transition rejected by domain invariant');
+      }
+      showToast(`Order #${orderId} transitioned to Paid & Domain Event dispatched`, 'success');
+      await loadPlatformState();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setBusyOrderId(null);
     }
-  }, [fetchHealth, fetchProducts, fetchOrders, addToast])
-
-  const handleAuthSuccess = (data) => {
-    setCurrentUser(data)
-    localStorage.setItem('nexuscore_user', JSON.stringify(data))
-    addToast('success', 'Authenticated', `Welcome back, ${data.fullName}`)
-  }
-
-  const handleLogout = () => {
-    setCurrentUser(null)
-    localStorage.removeItem('nexuscore_user')
-    addToast('info', 'Signed Out', 'Your session has been terminated.')
-  }
+  };
 
   return (
-    <div className="min-h-screen bg-[#07090E] text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
-      <Navbar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        health={health}
-        currentUser={currentUser}
-        onOpenAuth={() => setAuthModalOpen(true)}
-        onLogout={handleLogout}
-      />
+    <div className="min-h-screen bg-[#05070B] bg-grid-pattern relative">
+      <div className="pointer-events-none fixed inset-0 overflow-hidden z-0">
+        <div className="absolute -top-40 left-1/4 w-[550px] h-[550px] bg-indigo-600/15 rounded-full blur-[140px]" />
+        <div className="absolute top-1/3 -right-32 w-[450px] h-[450px] bg-violet-600/10 rounded-full blur-[140px]" />
+        <div className="absolute -bottom-40 left-10 w-[450px] h-[450px] bg-emerald-500/10 rounded-full blur-[140px]" />
+      </div>
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-8">
-        {activeTab === 'checkout' && (
-          <PricingCheckout
-            products={products}
-            onOrderCreated={fetchOrders}
-            addToast={addToast}
-            currentUser={currentUser}
-          />
-        )}
+      <div className="relative z-10">
+        <Navbar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          health={health}
+          user={user}
+          onOpenAuth={() => setIsAuthOpen(true)}
+          onLogout={() => {
+            setUser(null);
+            showToast('JWT session cleared', 'info');
+          }}
+        />
 
-        {activeTab === 'analytics' && (
-          <AnalyticsDashboard addToast={addToast} />
-        )}
+        <main className="max-w-7xl mx-auto px-4 py-8 space-y-12">
+          {(activeTab === 'overview' || activeTab === 'analytics') && (
+            <AnalyticsDashboard
+              summary={summary}
+              onRefresh={loadPlatformState}
+              isLoading={isLoading}
+            />
+          )}
 
-        {activeTab === 'orders' && (
-          <OrdersLedger
-            orders={orders}
-            loading={ordersLoading}
-            onRefresh={fetchOrders}
-            addToast={addToast}
-          />
-        )}
+          {(activeTab === 'overview' || activeTab === 'pricing') && (
+            <PricingCheckout
+              products={products}
+              orders={orders}
+              onInitiateCheckout={handleInitiateCheckout}
+              onSimulateSuccess={handleSimulateSuccess}
+              busyOrderId={busyOrderId}
+            />
+          )}
 
-        {activeTab === 'architecture' && (
-          <ArchitectureVisualizer />
-        )}
+          {(activeTab === 'overview' || activeTab === 'orders') && (
+            <OrdersLedger
+              orders={orders}
+              onInitiateCheckout={handleInitiateCheckout}
+              onSimulateSuccess={handleSimulateSuccess}
+              busyOrderId={busyOrderId}
+            />
+          )}
 
-        {activeTab === 'explorer' && (
-          <ApiExplorer currentUser={currentUser} addToast={addToast} />
-        )}
-      </main>
+          {(activeTab === 'overview' || activeTab === 'architecture') && (
+            <ArchitectureVisualizer />
+          )}
 
-      <footer className="border-t border-slate-800/80 bg-[#080B11] py-8 text-center text-xs text-slate-500 space-y-2">
-        <div className="flex items-center justify-center space-x-6 text-slate-400 font-mono text-[11px]">
-          <span>ASP.NET Core Kestrel</span>
-          <span>•</span>
-          <span>Entity Framework Core</span>
-          <span>•</span>
-          <span>Stripe.net Payments</span>
-          <span>•</span>
-          <span>Azure Container Ready</span>
-        </div>
-        <p className="text-slate-600">
-          NexusCore SaaS Enterprise Platform • Clean Architecture Showcase
-        </p>
-      </footer>
+          {(activeTab === 'overview' || activeTab === 'explorer') && (
+            <ApiExplorer token={user?.token} />
+          )}
+        </main>
+      </div>
 
       <AuthModal
-        isOpen={authModalOpen}
-        onClose={() => setAuthModalOpen(false)}
-        onAuthSuccess={handleAuthSuccess}
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+        onAuthenticated={setUser}
+        showToast={showToast}
       />
 
-      <Toast toasts={toasts} onDismiss={removeToast} />
+      <Toast toast={toast} onDismiss={() => setToast(null)} />
     </div>
-  )
+  );
 }
