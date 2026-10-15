@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: dotnet_saas_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: saas_admin
+      POSTGRES_PASSWORD: saas_password_123
+      POSTGRES_DB: saas_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dotnet_saas_api
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      DatabaseProvider: PostgreSql
+      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=saas_db;Username=saas_admin;Password=saas_password_123"
+      Stripe__SecretKey: "sk_test_placeholder"
+      Stripe__WebhookSecret: "whsec_placeholder"
+    ports:
+      - "5000:8080"
+    depends_on:
+      - db
+
+volumes:
+  postgres_data:
