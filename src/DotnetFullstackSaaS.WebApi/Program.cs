@@ -10,7 +10,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.UseUrls("http://localhost:5000");
+builder.WebHost.UseUrls("http://*:5000");
 
 builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices(builder.Configuration);
@@ -108,7 +108,7 @@ app.UseCors("AllowAll");
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapGet("/health", async (ApplicationDbContext dbContext) =>
+var healthCheckHandler = async (ApplicationDbContext dbContext, IWebHostEnvironment env) =>
 {
     var canConnect = false;
     try
@@ -130,10 +130,13 @@ app.MapGet("/health", async (ApplicationDbContext dbContext) =>
         uptime = $"{uptime.Hours:D2}h:{uptime.Minutes:D2}m:{uptime.Seconds:D2}s",
         memoryAllocatedMb = Math.Round((double)GC.GetTotalMemory(false) / (1024 * 1024), 2),
         runtimeVersion = Environment.Version.ToString(),
-        environment = app.Environment.EnvironmentName,
+        environment = env.EnvironmentName,
         timestamp = DateTime.UtcNow
     });
-});
+};
+
+app.MapGet("/health", healthCheckHandler);
+app.MapGet("/api/health", healthCheckHandler);
 
 app.MapControllers();
 
